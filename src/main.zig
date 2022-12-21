@@ -1,5 +1,6 @@
 const std = @import("std");
 const apitypes = @import("apitypes.zig");
+const backend = @import("backend.zig");
 
 const allocator = std.heap.c_allocator;
 
@@ -13,7 +14,6 @@ const instruments = &[_]InstrumentInfo {
     .{ .id = 0, .name = "Square Wave", .category = "Muse Hijacks", .package = "Muse Hijacks", .musicxml_sound_id = "square_wave", .mpe_sound_id = "square_wave" },
 };
 
-// TODO: something something iterator
 pub const InstrumentList = struct {
     index: usize = 0,
 
@@ -28,7 +28,6 @@ pub const InstrumentList = struct {
     }
 };
 
-// TODO
 pub const InstrumentInfo = struct {
     /// Some unique ID for the instrument
     id: c_int,
@@ -79,7 +78,7 @@ pub const PresetList = struct {
 };
 
 pub export fn ms_init() void {
-    std.log.info("Initializing our doppel-ganger MuseSampler library!", .{});
+    std.log.info("Initializing our döppelganger MuseSampler library!", .{});
 }
 
 pub export fn ms_get_version_major() c_int {
@@ -124,6 +123,7 @@ pub const MuseSampler = struct {
     block_size: c_int = 512,
     channel_count: c_int = 1,
     notes: std.ArrayList(Note),
+    auditionNotes: std.ArrayList(Note),
     dynamics: std.ArrayList(Dynamic),
     playing: bool = false,
 
@@ -150,6 +150,7 @@ pub const MuseSampler = struct {
         const ptr = allocator.create(MuseSampler) catch return null;
         ptr.* = .{
             .notes = std.ArrayList(Note).init(allocator),
+            .auditionNotes = std.ArrayList(Note).init(allocator),
             .dynamics = std.ArrayList(Dynamic).init(allocator)
         };
         return ptr;
@@ -327,7 +328,7 @@ pub const MuseSampler = struct {
 
         var i: usize = 0;
         while (i < sample_count) : (i += 1) {
-            var result: f32 = 0;
+            var sample: f32 = 0;
             if (self.playing) {
                 // TODO: stereo
                 var playing_notes = std.BoundedArray(Note, 32).init(0) catch unreachable;
@@ -344,18 +345,17 @@ pub const MuseSampler = struct {
                     }
                 }
 
-                for (playing_notes.constSlice()) |note| {
-                    // square wave
-                    const period: f32 = 1.0 / @intToFloat(f32, note.frequency);
-                    const value: f32 = if (@rem(time, period) < period / 2) -1.0 else 1.0;
-                    const volume: f32 = 0.05;
-                    result += value * volume * dynamic_value;
-                }
+                backend.process(&sample, time, playing_notes.constSlice(), dynamic_value);
             }
+
+            var audition_sample: f32 = 0;
+            backend.process(&audition_sample, time, self.auditionNotes.items, 0.5);
+            sample += audition_sample;
+            
             time += 1 / self.sample_rate;
 
-            output._channels[0][i] = result;
-            output._channels[1][i] = result;
+            output._channels[0][i] = sample;
+            output._channels[1][i] = sample;
         }
         return apitypes.ms_Result_OK;
     }
@@ -377,8 +377,10 @@ pub const MuseSampler = struct {
     }
 
     pub export fn ms_MuseSampler_destroy(self: *MuseSampler) void {
-        // TODO
-        _ = self;
+        self.notes.deinit();
+        self.auditionNotes.deinit();
+        self.dynamics.deinit();
+        allocator.destroy(self);
     }
 };
 
