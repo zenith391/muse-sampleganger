@@ -15,3 +15,9 @@ sudo mv /usr/lib/libMuseSamplerCoreLib.so /usr/lib/libMuseSamplerCoreLib_origina
 sudo ln -s $(pwd)/zig-out/lib/libmuse-sampleganger.so /usr/lib/libMuseSamplerCoreLib.so
 ```
 Launch MuseScore and profit!
+
+To revert the changes, just execute:
+```sh
+sudo rm /usr/lib/libMuseSamplerCoreLib.so
+sudo mv /usr/lib/libMuseSamplerCoreLib_original.so /usr/lib/libMuseSamplerCoreLib.so
+```
